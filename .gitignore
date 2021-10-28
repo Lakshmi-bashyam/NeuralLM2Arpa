@@ -2,3 +2,5 @@ logs
 lightning_logs
 checkpoints
 *.ipynb
+__pycache__
+data/test.txt

@@ -2,6 +2,8 @@ import pytorch_lightning as pl
 import torch
 from torch import LongTensor, IntTensor
 import os
+from torch._C import dtype
+from torch.functional import Tensor
 
 from torch.utils.data import random_split, DataLoader, IterableDataset
 from torch.utils.data.dataset import Dataset
@@ -23,9 +25,9 @@ class SequenceDataLoader(pl.LightningDataModule):
         # Define steps that should be done
         # on only one GPU, like getting data.
 
-        with open(os.path.join(root_dir, 'final_corpus.txt')) as f:
+        with open(os.path.join(root_dir, 'gen.txt')) as f:
             self.data = f.read().split('\n')
-        with open(os.path.join(root_dir, 'test.txt')) as f_test:
+        with open(os.path.join(root_dir, 'test_ngram.txt')) as f_test:
             self.test = f_test.read().split('\n')
 
         self.tokenizer = get_tokenizer("basic_english")
@@ -43,13 +45,21 @@ class SequenceDataLoader(pl.LightningDataModule):
             if len(item) > 1:
                 result.append(torch.tensor([self.vocab(item[:-1]), self.vocab(item[1:])]))
         return result
+    
+    def test_tokenize(self, data):
+        result = []
+        for item in data:
+            item = self.tokenizer(item)
+            # if len(item) > 1:
+            result.append(torch.tensor(self.vocab(item)))
+        return result
 
 
     def pad_collate(self, batch):
         # add <pad> tokens to match maximum length in batch
         (xx, yy) = zip(*batch)
         x_lens = IntTensor([len(x) for x in xx])
-        y_lens = IntTensor([len(y) for y in yy])
+        y_lens = IntTensor([len(yy) for y in yy])
 
         xx_pad = pad_sequence(xx, batch_first=True, padding_value=self.vocab['<pad>'])
         yy_pad = pad_sequence(yy, batch_first=True, padding_value=self.vocab['<pad>'])
@@ -61,6 +71,22 @@ class SequenceDataLoader(pl.LightningDataModule):
 
         return xx_pad, yy_pad, x_lens, y_lens
 
+    def pad_collate_test(self, batch):
+        # add <pad> tokens to match maximum length in batch
+        xx = batch
+        x_lens = IntTensor([len(x) for x in xx])
+        # y_lens = IntTensor([1 for y in yy])
+
+        xx_pad = pad_sequence(xx, batch_first=True, padding_value=self.vocab['<pad>'])
+        # yy_pad = pad_sequence(yy, batch_first=True, padding_value=self.vocab['<pad>'])
+
+        x_lens, perm_idx = x_lens.sort(0, descending=True)
+        # y_lens = x_lens
+        xx_pad = xx_pad[perm_idx]
+        # yy_pad = yy[perm_idx]
+
+        return xx_pad, x_lens
+
     def setup(self, stage=None):
         # Define steps that should be done on 
         # every GPU, like splitting data, applying
@@ -71,12 +97,13 @@ class SequenceDataLoader(pl.LightningDataModule):
             val_length = int(total_length - train_length)
             self.train, self.val = random_split(self.tokenize(self.data), [train_length, val_length])
         if stage == 'test':
-            self.test = self.tokenize(self.test)
+            self.test = self.test_tokenize(self.test)
+            # self.test = self.tokenize(self.test)
 
     
     def train_dataloader(self):
         # Return DataLoader for Training Data here
-        lm_train = DataLoader(self.train, batch_size=self.batch_size, collate_fn=self.pad_collate, shuffle=False, drop_last=True)
+        lm_train = DataLoader(self.train, batch_size=self.batch_size, collate_fn=self.pad_collate, shuffle=True, drop_last=True)
         return lm_train
     
     def val_dataloader(self):
@@ -86,7 +113,9 @@ class SequenceDataLoader(pl.LightningDataModule):
     
     def test_dataloader(self):
         # Return DataLoader for Testing Data here
-        lm_test = DataLoader(self.test, batch_size=self.batch_size, collate_fn=self.pad_collate, shuffle=False, drop_last=True)
+        # lm_test = DataLoader(self.test, batch_size=self.batch_size, collate_fn=self.pad_collate, shuffle=False, drop_last=False)
+        lm_test = DataLoader(self.test, batch_size=self.batch_size, collate_fn=self.pad_collate_test, shuffle=False)
+
         return lm_test
 
 class NgramDataLoader(pl.LightningDataModule):

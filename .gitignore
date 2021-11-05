@@ -4,3 +4,6 @@ checkpoints
 *.ipynb
 __pycache__
 data/test.txt
+callback_logs
+paper
+new_lm.arpa

@@ -7,3 +7,4 @@ data/test.txt
 callback_logs
 paper
 new_lm.arpa
+full_corpus.txt

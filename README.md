@@ -19,6 +19,12 @@ To train RNNLM, add the corpus to data folder
     ```
 
     Evaluation result - Test perpexity value is ~52
+    
+3. To extract RNNLM probabilities, run
+   
+   ```
+   python predict.py
+   ```
 
 ## References
 

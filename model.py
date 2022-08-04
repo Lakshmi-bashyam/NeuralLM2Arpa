@@ -1,19 +1,11 @@
 import pytorch_lightning as pl
 import torch
-from torch import LongTensor, IntTensor
 import torch.nn as nn
-import torch.nn.functional as F
-
-from torch.nn import Embedding, LSTM
-from torch.nn.modules import padding
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.autograd import Variable
-# from sklearn.metrics import accuracy_score, f1_score
-from collections import defaultdict
-import json
+from torch.nn import Embedding
+from torch.nn.functional import softmax
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-
-from data.data import SequenceDataLoader
 
 class LSTMRegressor(pl.LightningModule):
     '''
@@ -59,12 +51,10 @@ class LSTMRegressor(pl.LightningModule):
         self.relu = nn.ReLU()
         
     def forward(self, x, x_len, hiddens):
-        # self.hidden = self.init_hidden(self.batch_size)
         embedded = self.embed(x)
         packed_input = pack_padded_sequence(embedded, x_len.cpu(), batch_first=True)
         packed_output, hiddens = self.lstm(packed_input, hiddens)
         output, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-        # output = output[:, -1, :]
         rel = self.relu(output)
         dense1 = self.linear(rel)
         drop = self.dropout(dense1)
@@ -100,12 +90,6 @@ class LSTMRegressor(pl.LightningModule):
         y_hat = op.view(-1, output_dim)
         y = y.view(-1)
         loss = self.criterion(y_hat, y).mean()
-        # pred = nn.Softmax(dim=1)(y_hat).argmax(dim=1)
-        # mask = (y != self.padding_idx)
-        # pred = pred[mask].cpu()
-        # y = y[mask].cpu()
-        # acc = accuracy_score(pred, y)
-        # acc = torch.tensor(acc, dtype=torch.float)
         self.log('val_loss', loss)
         self.log('val_pp', torch.exp(loss))
         return {'loss': loss, 'pp': torch.exp(loss)}
@@ -113,11 +97,8 @@ class LSTMRegressor(pl.LightningModule):
     def training_epoch_end(self, outputs):
 
         loss = torch.stack([o['loss'] for o in outputs], 0).mean()
-        # acc = torch.stack([o['acc'] for o in outputs], 0).mean()
         out = {'train_loss': loss, 'train_pp': torch.exp(loss)}
         self.log('train_epoch_loss', loss)
-        # self.hidden = self.init_hidden(self.batch_size)
-        # return {**out, 'log': out}
 
     def validation_epoch_end(self, outputs):
         loss = torch.stack([o['loss'] for o in outputs], 0).mean()
@@ -125,28 +106,13 @@ class LSTMRegressor(pl.LightningModule):
         out = {'val_loss': loss, 'val_pp': pp}
         return {**out, 'log': out}
     
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch):
         x, y, x_len, y_len = batch
         hiddens = self.init_hidden(self.batch_size)
         hiddens = (hiddens[0].to(self.device), hiddens[1].to(self.device))
         op = self.forward(x, x_len, hiddens)
         output_dim = op.shape[-1]
         y_hat = op.view(-1, output_dim)
-        y = y.view(-1)
-        loss = self.criterion(y_hat, y).mean()
-        # pred = nn.Softmax(dim=1)(y_hat).argmax(dim=1)
-        # mask = (y != self.padding_idx)
-        # pred = pred[mask].cpu()
-        # y = y[mask].cpu()
-        # acc = accuracy_score(pred, y)
-        # acc = torch.tensor(acc, dtype=torch.float)
-        # self.log('test_loss', loss)
-        return {'loss': loss}
+        pred =  torch.topk(softmax(y_hat, dim=1), op.shape[-1])
+        return pred
 
-    def test_epoch_end(self, outputs) -> None:
-        loss = torch.stack([o['loss'] for o in outputs], 0).mean()
-        # pp = torch.stack([o['pp'] for o in outputs], 0).mean()
-        out = {'test_loss': loss, 'test_pp': torch.exp(loss)}
-        self.log('test_loss', loss)
-        self.log('test_pp', torch.exp(loss))
-        return {**out, 'log': out}

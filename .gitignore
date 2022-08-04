@@ -1,10 +1,9 @@
 logs
 lightning_logs
 checkpoints
-*.ipynb
+# *.ipynb
 __pycache__
 data/test.txt
 callback_logs
 paper
-new_lm.arpa
 full_corpus.txt
